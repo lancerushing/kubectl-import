@@ -8,15 +8,15 @@ readonly kubeconfig=${KUBECONFIG:-~/.kube/config}
 
 # show usage before creating temporary directories
 showUsage() {
-  echo "Usage: $0 /path/to/config-file ?...?"
+  echo "Usage: $0 new-ctx-name /path/to/config-file"
   echo ""
-  echo "The tool takes one or more kubectl config files and combines them back to:"
+  echo "The tool takes one kubectl config file and combines it to:"
   echo "${kubeconfig}"
   echo ""
   echo "To write output to another file, set KUBECONFIG variable to"
   echo "destination file and include all files to read as arguments - such as:"
   echo ""
-  echo "  $ KUBECONFIG=\"/tmp/kube-config\" $0 \"${kubeconfig}\" \"/path/to/config-file\""
+  echo "  $ KUBECONFIG=\"/tmp/kube-config\" $0 \"${kubeconfig}\" \"new-ctx-name\" \"/path/to/config-file\""
   exit 1
 }
 
@@ -63,9 +63,8 @@ copyKubectlFile() {
 main() {
   local i=0
   local kubeconfigs=""
-  local file=""
-
-  # copy all files to single place and build up list of all files
+  local newName=$1
+  local file=$2
 
   # copy kubeconfig file if present
   if [ -f "${kubeconfig}" ] ; then
@@ -74,16 +73,15 @@ main() {
     i=$((${i} + 1))
   fi
 
-  for file in "$@" ; do
-    copyKubectlFile "${file}" "${tmpdir}/config${i}"
-    if [ "${i}" -gt 0 ] ; then
-      kubeconfigs="${kubeconfigs}:"
-    fi
-    kubeconfigs="${kubeconfigs}${tmpdir}/config${i}"
-    i=$((${i} + 1))
-  done
+  copyKubectlFile "${file}" "${tmpdir}/config${i}"
+  oldName=$(KUBECONFIG="${tmpdir}/config${i}" kubectl config get-contexts -o name)
+  KUBECONFIG="${tmpdir}/config${i}" kubectl config rename-context "${oldName}" "${newName}" >/dev/null
+  if [ "${i}" -gt 0 ] ; then
+    kubeconfigs="${kubeconfigs}:"
+  fi
+  kubeconfigs="${kubeconfigs}${tmpdir}/config${i}"
 
-  echo "Merging configuration and storing as \"${kubeconfig}\""
+  echo "Merging configuration and storing as \"${kubeconfig}\"" 
   KUBECONFIG="${kubeconfigs}" kubectl config view --raw >"${tmpdir}/final"
 
   mkdir -p "$(dirname "${kubeconfig}")"
